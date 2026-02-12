@@ -122,14 +122,13 @@ You are Matrix Alpha, a Senior Financial Analyst AI.
 3. `analyze_stock(ticker: str)`: Use this to get technical indicators (RSI, SMA) and a Buy/Sell signal.
 
 **FORMAT INSTRUCTIONS:**
-You must answer in the following format:
-
-Thought: [Your reasoning about what to do]
-Action: {"tool": "tool_name", "args": {"ticker": "TICKER"}}
-
-If you have the information or no tool is needed:
-Thought: [Reasoning]
-Answer: [Your final response]
+- If you need to use tools to answer, you must output one or more Action lines.
+- Each Action MUST be a valid JSON object starting with 'Action: '.
+- Format: Action: {"tool": "tool_name", "args": {"ticker": "TICKER"}}
+- You can provide multiple Actions if needed (e.g., to fetch both price and news).
+- Use Thought: to explain your reasoning before taking actions.
+- NEVER provide an Answer until you have the tool results if tools are needed.
+- If no tool is needed, respond with Thought: followed by Answer:.
 
 **EXAMPLES:**
 
@@ -137,14 +136,37 @@ User: "Analyze RELIANCE"
 Thought: The user wants technical analysis for Reliance Industries. I should use the analyze_stock tool.
 Action: {"tool": "analyze_stock", "args": {"ticker": "RELIANCE"}}
 
-User: "What is the price of TCS?"
-Thought: The user is asking for the current price of TCS. I will use get_stock_price.
+User: "Get price and news for TCS"
+Thought: The user wants both price and news for TCS. I will call both tools.
 Action: {"tool": "get_stock_price", "args": {"ticker": "TCS"}}
+Action: {"tool": "get_stock_news", "args": {"ticker": "TCS"}}
 
 User: "Hello"
 Thought: The user is greeting me. No tool is needed.
 Answer: Hello! I am Matrix Alpha, your financial assistant. How can I help you today?
 """
+
+def parse_actions(text: str):
+    """Parses all 'Action: {JSON}' patterns from the text."""
+    actions = []
+    # Find all lines starting with Action: 
+    matches = re.findall(r"Action:\s*(\{.*\})", text, re.IGNORECASE)
+    for match in matches:
+        try:
+            # Clean up potential markdown or trailing text
+            clean_json = match.strip()
+            # If there's trailing content after the closing brace of the first object, try to isolate it
+            # This is a bit naive but helps if the LLM adds commentary on the same line
+            actions.append(json.loads(clean_json))
+        except json.JSONDecodeError:
+            # Try a slightly more aggressive match if direct load fails
+            try:
+                second_chance = re.search(r"\{.*\}", match)
+                if second_chance:
+                    actions.append(json.loads(second_chance.group(0)))
+            except:
+                logger.warning(f"Failed to parse action JSON: {match}")
+    return actions
 
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -180,80 +202,74 @@ async def chat(request: ChatRequest):
                 data={"response": "I'm having trouble thinking right now. Please try again later."}
             )
 
-        # 2. Check for Tool Call
-        tool_call = None
-        try:
-            json_match = re.search(r"\{.*\}", content, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(0)
-                if "```json" in content:
-                     json_str = content.split("```json")[1].split("```")[0].strip()
-                elif "```" in content:
-                     json_str = content.split("```")[1].strip()
-                
-                tool_data = json.loads(json_str)
-                if "tool" in tool_data and "args" in tool_data:
-                    tool_call = tool_data
-        except Exception as e:
-            logger.warning(f"Failed to parse tool call: {e}")
-
-        # 3. Execute Tool if applicable
-        if tool_call:
-            tool_name = tool_call["tool"]
-            args = tool_call["args"]
+        # 2. Check for Tool Calls
+        tool_calls = parse_actions(content)
+        
+        # 3. Execute Tools if applicable
+        if tool_calls:
+            results = []
+            executed_tools = []
             
-            if tool_name in TOOLS:
-                logger.info(f"Executing tool: {tool_name} with {args}")
-                tool_result = TOOLS[tool_name](**args)
+            for tool_call in tool_calls:
+                tool_name = tool_call.get("tool")
+                args = tool_call.get("args", {})
                 
-                # 4. Feed result back to LLM
+                if tool_name in TOOLS:
+                    logger.info(f"Executing tool: {tool_name} with {args}")
+                    try:
+                        tool_result = TOOLS[tool_name](**args)
+                        results.append(f"Tool '{tool_name}' output: {tool_result}")
+                        executed_tools.append({"name": tool_name, "args": args, "result": tool_result})
+                    except Exception as e:
+                        logger.error(f"Error executing {tool_name}: {e}")
+                        results.append(f"Tool '{tool_name}' failed: {str(e)}")
+                else:
+                    logger.warning(f"Tool not found: {tool_name}")
+                    results.append(f"Tool '{tool_name}' not found.")
+
+            if results:
+                # 4. Feed all results back to LLM for a final summary
+                combined_results = "\n\n".join(results)
                 follow_up_messages = messages + [
-                    {"role": "assistant", "content": json.dumps(tool_call)},
-                    {"role": "system", "content": f"Tool Output: {tool_result}\n\nNow provide a helpful response to the user based on this output."}
+                    {"role": "assistant", "content": content},
+                    {"role": "system", "content": f"SYSTEM: Collected Tool Outputs:\n{combined_results}\n\nPlease synthesize these results into a professional final answer for the user. Do NOT mention tool names, just provide the info."}
                 ]
                 
                 try:
                     final_response = client.chat_completion(
-                        model="mistralai/Mistral-7B-Instruct-v0.2",
+                        # model="mistralai/Mistral-7B-Instruct-v0.2",
+                        model="mistralai/Mixtral-8x7B-Instruct-v0.1", # Using a slightly larger/smarter model for synthesis if available
                         messages=follow_up_messages,
-                        max_tokens=400,
-                        temperature=0.7
+                        max_tokens=500,
+                        temperature=0.3
                     )
-                    final_answer = final_response.choices[0].message.content
+                    final_answer = final_response.choices[0].message.content.strip()
                 except Exception as e:
                     logger.error(f"LLM Follow-up Call Failed: {e}")
-                    # Fallback: Just return the tool result if LLM fails
-                    # If tool result is JSON (analyze_stock), maybe format it a bit?
-                    if isinstance(tool_result, str) and tool_result.startswith("{"):
-                         # It's likely JSON from analyze_stock, send as is or raw text
-                         final_answer = f"Here is the data, but I couldn't summarize it:\n\n{tool_result}"
-                    else:
-                         final_answer = tool_result
+                    # Fallback synthesis
+                    final_answer = "I've gathered the following information for you:\n\n" + "\n".join([str(r) for r in results])
 
                 return make_response(
                     status=HTTPStatusCode.OK,
                     code=APICode.OK,
-                    message="Tool execution successful",
+                    message="Multi-tool execution successful",
                     data={
                         "response": final_answer,
-                        "tool_used": tool_name,
-                        "data": {"args": args, "result": tool_result}
+                        "tools_used": [t["name"] for t in executed_tools],
+                        "details": executed_tools
                     }
                 )
-            else:
-                 return make_response(
-                    status=HTTPStatusCode.OK,
-                    code=APICode.OK,
-                    message="Tool not found",
-                    data={"response": "I tried to use a tool that doesn't exist."}
-                )
 
-        # If no tool, return the text
+        # If no tool, return the text (clean up if LLM included 'Answer:' prefix)
+        clean_response = content
+        if "Answer:" in content:
+            clean_response = content.split("Answer:", 1)[1].strip()
+        
         return make_response(
             status=HTTPStatusCode.OK,
             code=APICode.OK,
             message="Chat response generated",
-            data={"response": content}
+            data={"response": clean_response}
         )
 
     except Exception as e:
