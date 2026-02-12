@@ -1,0 +1,21 @@
+
+--- Registered Routes ---
+/openapi.json [HEAD,GET]
+/docs [HEAD,GET]
+/docs/oauth2-redirect [HEAD,GET]
+/redoc [HEAD,GET]
+/api/stock/ping [GET]
+/api/stock/market/summary [GET]
+/api/stock/watchlist [GET]
+/api/stock/watchlist [POST]
+/api/stock/watchlist/{ticker} [DELETE]
+/api/stock/market/analysis [GET]
+/api/stock/risk/calculate [POST]
+/api/stock/ai/signals [GET]
+/api/stock/{ticker}/history [GET]
+/api/stock/{ticker}/analysis [GET]
+/api/news/latest [GET]
+/api/news/{ticker} [GET]
+/ [GET]
+-------------------------
+
