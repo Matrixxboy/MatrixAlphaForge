@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react"
 import { TrendingUp, Users, Activity, DollarSign } from "lucide-react"
 import { Link } from "react-router-dom"
+import ChatInterface from "../components/ChatInterface"
 
 const StatCard = ({
   icon: Icon,
@@ -207,6 +208,80 @@ const MarketSentiment = () => {
   )
 }
 
+interface MarketAnalysis {
+  sectors: { name: string; change: number; performance: string }[]
+  movers: {
+    gainers: { symbol: string; price: number; change: number }[]
+    losers: { symbol: string; price: number; change: number }[]
+  }
+}
+
+const MarketMovers = () => {
+  const [analysis, setAnalysis] = useState<MarketAnalysis | null>(null)
+
+  useEffect(() => {
+    const fetchAnalysis = async () => {
+      try {
+        const data = await api.get<MarketAnalysis>("/stock/market/analysis")
+        setAnalysis(data)
+      } catch (e) {
+        console.error("Failed to fetch market analysis", e)
+      }
+    }
+    fetchAnalysis()
+  }, [])
+
+  if (!analysis) return null
+
+  return (
+    <div className="bg-white p-6 rounded-2xl border border-alpha-border shadow-sm h-96 flex flex-col">
+      <h3 className="text-lg font-semibold text-alpha-deep mb-4">Top Movers</h3>
+      <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+        <div>
+          <h4 className="text-sm font-medium text-green-600 mb-3 uppercase tracking-wider">
+            Top Gainers
+          </h4>
+          <div className="space-y-3">
+            {analysis.movers.gainers.map((stock, idx) => (
+              <div key={idx} className="flex justify-between items-center">
+                <span className="font-medium text-gray-700">
+                  {stock.symbol.replace(".NS", "")}
+                </span>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-gray-900">
+                    ₹{stock.price}
+                  </div>
+                  <div className="text-xs text-green-600">+{stock.change}%</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h4 className="text-sm font-medium text-red-600 mb-3 uppercase tracking-wider">
+            Top Losers
+          </h4>
+          <div className="space-y-3">
+            {analysis.movers.losers.map((stock, idx) => (
+              <div key={idx} className="flex justify-between items-center">
+                <span className="font-medium text-gray-700">
+                  {stock.symbol.replace(".NS", "")}
+                </span>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-gray-900">
+                    ₹{stock.price}
+                  </div>
+                  <div className="text-xs text-red-600">{stock.change}%</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface MarketData {
   title: string
   value: number
@@ -234,7 +309,7 @@ const Dashboard = () => {
   }, [])
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
       <div>
         <h2 className="text-2xl font-bold text-alpha-deep">Market Overview</h2>
         <p className="text-alpha-muted">
@@ -317,6 +392,15 @@ const Dashboard = () => {
           <MarketSentiment />
         </div>
       </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-1">
+          <MarketMovers />
+        </div>
+        {/* Placeholder for future widgets */}
+      </div>
+
+      <ChatInterface />
     </div>
   )
 }

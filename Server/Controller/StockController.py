@@ -505,37 +505,57 @@ async def get_stock_analysis(ticker: str):
 
             # System prompt to enforce persona and JSON format
             system_prompt = """
-            You are a Senior Financial Analyst AI.
-            Your task is to analyze stock data and provide a trading signal (BUY, SELL, or HOLD), reasoning, and a sentiment score.
-            You MUST output your response in valid JSON format ONLY. Do not add any markdown formatting like ```json ... ```.
-            
-            JSON Schema:
-            {
-                "signal": "BUY", "SELL", or "HOLD",
-                "reasoning": ["point 1", "point 2", "point 3"],
-                "sentiment_score": integer between 0 and 100
-            }
-            """
+                You are a Senior Financial Markets Analyst AI specializing in technical and sentiment-based stock evaluation.
+
+                Your objective:
+                Analyze structured stock data and return a trading decision.
+
+                CRITICAL OUTPUT RULES:
+                - Output MUST be strictly valid JSON.
+                - Do NOT include markdown, backticks, commentary, or explanations outside JSON.
+                - Do NOT add extra fields.
+                - Do NOT change field names.
+                - Response must be a single JSON object.
+
+                Required JSON Schema:
+                {
+                    "signal": "BUY" | "SELL" | "HOLD",
+                    "reasoning": ["reason 1", "reason 2", "reason 3", "reason 4", "reason 5"],
+                    "sentiment_score": integer (0-100)
+                }
+
+                Decision Rules:
+                - Heavily prioritize the provided Technical Indicator Signal.
+                - Only override it if news sentiment is strongly contradictory.
+                - reasoning must contain EXACTLY 5 concise, professional statements.
+                - sentiment_score:
+                    0–40  = Bearish
+                    41–60 = Neutral
+                    61–100 = Bullish
+                """
+
 
             user_prompt = f"""
-            Analyze the following stock data for {ticker}:
-            - Current Price: {round(current_price, 2)}
-            - RSI (14): {round(current_rsi, 2)}
-            - SMA (50): {round(sma_50, 2)}
-            - Technical Indicator Signal: {technical_signal} (Based on RSI & SMA)
-            
-            Recent News:
-            {news_summary}
+                Stock: {ticker}
 
-            Instructions:
-            1. Heavily weigh the Technical Indicator Signal ({technical_signal}) unless news is overwhelmingly contrary.
-            2. Provide 3 concise reasons.
-            3. Determine sentiment score (0=Bearish, 100=Bullish).
+                Technical Data:
+                - Current Price: {round(current_price, 2)}
+                - RSI (14): {round(current_rsi, 2)}
+                - SMA (50): {round(sma_50, 2)}
+                - Precomputed Technical Signal: {technical_signal}
+
+                News Summary:
+                {news_summary}
+
+                Analysis Instructions:
+                1. Base your primary decision on the Precomputed Technical Signal.
+                2. Adjust only if news sentiment strongly conflicts.
+                3. Provide EXACTLY 5 concise reasons.
+                4. Assign a sentiment score between 0 and 100.
+                5. Return strictly valid JSON.
+                """
             
-            Output strictly valid JSON.
-            """
-            
-            logger.info("Sending request to Hugging Face (Mistral-7B-Instruct-v0.3)")
+            logger.info("Sending request to Hugging Face (mistralai/Mistral-7B-Instruct-v0.2)")
             
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -543,7 +563,7 @@ async def get_stock_analysis(ticker: str):
             ]
             
             response = client.chat_completion(
-                model="mistralai/Mistral-7B-Instruct-v0.3",
+                model="mistralai/Mistral-7B-Instruct-v0.2",
                 messages=messages,
                 max_tokens=500,
                 temperature=0.7

@@ -9,7 +9,6 @@ import {
   Search,
   Bell,
 } from "lucide-react"
-import ChatWidget from "../Chat/ChatWidget"
 import { Link } from "react-router-dom"
 
 interface LayoutProps {
@@ -115,9 +114,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {/* Dynamic Content */}
         <main className="flex-1 p-6 overflow-y-auto">{children}</main>
       </div>
-
-      {/* Global Chat Widget */}
-      <ChatWidget />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react"
 import { useParams } from "react-router-dom"
-
+import ReactMarkdown from "react-markdown"
 import {
   ArrowUp,
   ArrowDown,
@@ -8,6 +8,7 @@ import {
   Brain,
   AlertTriangle,
   ExternalLink,
+  Loader2,
 } from "lucide-react"
 import { api } from "../services/api"
 import CandlestickChart from "../components/CandlestickChart"
@@ -27,7 +28,9 @@ interface StockAnalysis {
   rsi: number
   sma_50: number
   current_price: number
-  reasoning: string[]
+  reasoning: string[] // This can now contain Markdown strings
+  summary_md?: string // Optional field for a full markdown report
+  sentiment_score?: number
   fundamentals?: {
     market_cap: string
     pe_ratio: string
@@ -58,20 +61,14 @@ const StockDetails = () => {
       if (!ticker) return
       setLoading(true)
       try {
-        // Fetch History
-        const histData = await api.get<StockHistory[]>(
-          `/stock/${ticker}/history`,
-        )
+        const [histData, analysisData, newsData] = await Promise.all([
+          api.get<StockHistory[]>(`/stock/${ticker}/history`),
+          api.get<StockAnalysis>(`/stock/${ticker}/analysis`),
+          api.get<NewsItem[]>(`/news/${ticker}`),
+        ])
+
         setHistory(histData || [])
-
-        // Fetch Analysis
-        const analysisData = await api.get<StockAnalysis>(
-          `/stock/${ticker}/analysis`,
-        )
         setAnalysis(analysisData)
-
-        // Fetch News
-        const newsData = await api.get<NewsItem[]>(`/news/${ticker}`)
         setNews(newsData || [])
       } catch (error) {
         console.error("Failed to fetch stock details", error)
@@ -85,213 +82,259 @@ const StockDetails = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-alpha-muted">
-        Analyzing Market Data...
+      <div className="flex flex-col items-center justify-center h-[60vh] text-alpha-muted animate-pulse">
+        <Loader2 className="animate-spin mb-4 text-alpha-primary" size={40} />
+        <p className="text-lg font-medium">Crunching Real-time Data...</p>
       </div>
     )
   }
 
+  const getSignalColor = (signal: string) => {
+    if (signal === "BUY") return "text-green-600 bg-green-50"
+    if (signal === "SELL") return "text-red-600 bg-red-50"
+    return "text-yellow-600 bg-yellow-50"
+  }
+
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+    <div className="max-w-7xl mx-auto space-y-8 p-4">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 border-b border-gray-100 pb-6">
         <div>
-          <h1 className="text-3xl font-bold text-alpha-deep">{ticker}</h1>
-          <p className="text-alpha-muted">Real-time AI Assessment</p>
+          <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">
+            {ticker}
+          </h1>
+          <p className="text-slate-500 font-medium flex items-center gap-2">
+            <Activity size={16} /> Technical & Sentimental Analysis
+          </p>
         </div>
         {analysis && (
-          <div className="text-right">
-            <div className="text-2xl font-bold text-alpha-deep">
-              ₹{analysis.current_price}
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <div className="text-sm text-slate-400 uppercase font-bold tracking-wider">
+                Current Price
+              </div>
+              <div className="text-3xl font-black text-slate-900">
+                ₹{analysis.current_price.toLocaleString()}
+              </div>
             </div>
             <div
-              className={`flex items-center justify-end ${analysis.signal === "BUY" ? "text-alpha-success" : analysis.signal === "SELL" ? "text-alpha-danger" : "text-yellow-600"}`}
+              className={`px-4 py-2 rounded-xl border flex items-center gap-2 ${getSignalColor(analysis.signal)}`}
             >
-              {analysis.signal === "BUY" && <ArrowUp size={20} />}
-              {analysis.signal === "SELL" && <ArrowDown size={20} />}
-              <span className="font-bold ml-1">{analysis.signal} SIGNAL</span>
+              {analysis.signal === "BUY" && (
+                <ArrowUp size={24} strokeWidth={3} />
+              )}
+              {analysis.signal === "SELL" && (
+                <ArrowDown size={24} strokeWidth={3} />
+              )}
+              <span className="font-black text-xl">{analysis.signal}</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Fundamentals Card */}
+      {/* Fundamentals Grid */}
       {analysis?.fundamentals && (
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 bg-white p-6 rounded-2xl border border-alpha-border shadow-sm">
-          <div className="space-y-1">
-            <p className="text-xs text-alpha-muted uppercase font-semibold">
-              Market Cap
-            </p>
-            <p className="font-medium text-alpha-deep">
-              {analysis.fundamentals.market_cap}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs text-alpha-muted uppercase font-semibold">
-              P/E Ratio
-            </p>
-            <p className="font-medium text-alpha-deep">
-              {analysis.fundamentals.pe_ratio}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs text-alpha-muted uppercase font-semibold">
-              52W High
-            </p>
-            <p className="font-medium text-alpha-success">
-              ₹{analysis.fundamentals.fifty_two_week_high}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs text-alpha-muted uppercase font-semibold">
-              52W Low
-            </p>
-            <p className="font-medium text-alpha-danger">
-              ₹{analysis.fundamentals.fifty_two_week_low}
-            </p>
-          </div>
-          <div className="col-span-2 space-y-1">
-            <p className="text-xs text-alpha-muted uppercase font-semibold">
-              Sector / Industry
-            </p>
-            <p className="font-medium text-alpha-deep">
-              {analysis.fundamentals.sector} • {analysis.fundamentals.industry}
-            </p>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[
+            {
+              label: "Market Cap",
+              value: formatCurrency(analysis.fundamentals.market_cap),
+            },
+            { label: "P/E Ratio", value: analysis.fundamentals.pe_ratio },
+            {
+              label: "52W High",
+              value: `₹${analysis.fundamentals.fifty_two_week_high}`,
+              color: "text-green-600",
+            },
+            {
+              label: "52W Low",
+              value: `₹${analysis.fundamentals.fifty_two_week_low}`,
+              color: "text-red-600",
+            },
+            {
+              label: "Sector",
+              value: analysis.fundamentals.sector,
+              span: "col-span-2",
+            },
+          ].map((stat, i) => (
+            <div
+              key={i}
+              className={`bg-white p-4 rounded-xl border border-gray-100 shadow-sm ${stat.span || ""}`}
+            >
+              <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">
+                {stat.label}
+              </p>
+              <p
+                className={`font-bold truncate ${stat.color || "text-slate-700"}`}
+              >
+                {stat.value}
+              </p>
+            </div>
+          ))}
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Chart Section */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-alpha-border shadow-sm min-h-[500px]">
-          <h3 className="text-lg font-semibold text-alpha-deep mb-6 flex items-center">
-            <Activity className="mr-2 text-alpha-primary" size={20} />
-            Price Action (Candlestick)
-          </h3>
-          <div className="h-[400px] w-full">
-            {history.length > 0 ? (
-              <div style={{ width: "100%", height: "100%" }}>
+        {/* Main Chart Column */}
+        <div className="lg:col-span-2 space-y-8">
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+            <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+              <Activity className="text-blue-500" size={20} /> Price Action
+            </h3>
+            <div className="h-[450px] w-full">
+              {history.length > 0 ? (
                 <CandlestickChart
-                  data={history.map((d) => ({
-                    ...d,
-                    date: new Date(d.date),
-                  }))}
+                  data={history.map((d) => ({ ...d, date: new Date(d.date) }))}
                   width={800}
-                  height={400}
+                  height={450}
                   ratio={1}
                 />
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-full text-alpha-muted">
-                Loading Chart Data...
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* News Section */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-alpha-border shadow-sm">
-          <h3 className="text-lg font-semibold text-alpha-deep mb-4">
-            Latest Market News
-          </h3>
-          <div className="space-y-4">
-            {news.map((item, index) => (
-              <div
-                key={index}
-                className="p-4 rounded-xl hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0"
-              >
-                <div className="flex justify-between items-start">
-                  <a
-                    href={item.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="group font-medium text-lg text-blue-600 hover:text-blue-800 hover:underline transition-colors flex-1 flex items-start gap-2"
-                  >
-                    {item.title}
-                    <ExternalLink
-                      size={16}
-                      className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                    />
-                  </a>
-                  <span
-                    className={`text-xs px-2 py-1 rounded-lg ml-2 whitespace-nowrap ${
-                      item.sentiment === "Positive"
-                        ? "bg-green-100 text-green-700"
-                        : item.sentiment === "Negative"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    {item.sentiment}
-                  </span>
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-400">
+                  No chart data available
                 </div>
-                <div className="flex items-center text-xs text-alpha-muted mt-2 space-x-3">
-                  <span className="font-semibold text-gray-600">
-                    {item.source}
-                  </span>
-                  <span>•</span>
-                  <span>{new Date(item.pubDate).toLocaleDateString()}</span>
-                </div>
-              </div>
-            ))}
-            {news.length === 0 && (
-              <p className="text-alpha-muted text-center py-4">
-                No recent news found.
-              </p>
-            )}
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* AI Insight Card */}
-        <div className="bg-white p-6 rounded-2xl border border-alpha-border shadow-sm space-y-6">
-          <div className="flex items-center space-x-2 mb-4">
-            <Brain className="text-alpha-primary" size={24} />
-            <h3 className="text-lg font-semibold text-alpha-deep">
-              AI Reasoning
+          {/* Markdown-ready News Section */}
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">
+              Latest Market Intel
             </h3>
+            <div className="divide-y divide-gray-50">
+              {news.map((item, index) => (
+                <div key={index} className="py-4 first:pt-0 last:pb-0 group">
+                  <div className="flex justify-between items-start gap-4">
+                    <a
+                      href={item.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1"
+                    >
+                      <h4 className="font-bold text-slate-700 group-hover:text-blue-600 transition-colors leading-snug text-lg">
+                        {item.title}
+                      </h4>
+                    </a>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest ${
+                        item.sentiment === "Positive"
+                          ? "bg-green-100 text-green-700"
+                          : item.sentiment === "Negative"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {item.sentiment}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
+                    <span className="font-bold text-slate-500">
+                      {item.source}
+                    </span>
+                    <span>•</span>
+                    <span>{new Date(item.pubDate).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* AI Insight Sidebar */}
+        <div className="space-y-6">
+          <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl relative overflow-hidden">
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-6">
+                <Brain className="text-blue-400" size={24} />
+                <h3 className="text-xl font-bold">AI Analysis</h3>
+              </div>
+
+              {analysis ? (
+                <div className="space-y-6">
+                  {/* Sentiment Progress */}
+                  <div>
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="text-slate-400">Market Sentiment</span>
+                      <span className="font-black text-blue-400">
+                        {analysis.sentiment_score}%
+                      </span>
+                    </div>
+                    <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all duration-1000"
+                        style={{ width: `${analysis.sentiment_score}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Technical Indicators */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+                      <p className="text-[10px] text-slate-500 uppercase font-bold">
+                        RSI (14)
+                      </p>
+                      <p className="text-lg font-mono font-bold">
+                        {analysis.rsi}
+                      </p>
+                    </div>
+                    <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+                      <p className="text-[10px] text-slate-500 uppercase font-bold">
+                        SMA (50)
+                      </p>
+                      <p className="text-lg font-mono font-bold">
+                        ₹{analysis.sma_50}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Enhanced Key Drivers with Markdown */}
+                  <div className="space-y-4">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                      Logic & Reasoning
+                    </p>
+                    {analysis.reasoning.map((reason, idx) => (
+                      <div
+                        key={idx}
+                        className="flex gap-3 text-sm leading-relaxed border-l-2 border-slate-700 pl-4 py-1"
+                      >
+                        <div className="prose prose-invert prose-sm">
+                          <ReactMarkdown>{reason}</ReactMarkdown>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-slate-500 py-10 text-center italic">
+                  No analysis generated
+                </div>
+              )}
+            </div>
+            {/* Background Decoration */}
+            <div className="absolute top-[-10%] right-[-10%] w-40 h-40 bg-blue-500/10 rounded-full blur-3xl" />
           </div>
 
-          {analysis ? (
-            <>
-              <div className="p-4 bg-gray-50 rounded-xl space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-alpha-muted">RSI (14)</span>
-                  <span
-                    className={`font-mono font-medium ${analysis.rsi > 70 ? "text-alpha-danger" : analysis.rsi < 30 ? "text-alpha-success" : "text-alpha-deep"}`}
-                  >
-                    {analysis.rsi}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-alpha-muted">SMA (50)</span>
-                  <span className="font-mono font-medium text-alpha-deep">
-                    ₹{analysis.sma_50}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {analysis.reasoning.map((reason, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-start space-x-2 text-sm text-alpha-body"
-                  >
-                    <AlertTriangle
-                      size={16}
-                      className="text-yellow-500 mt-0.5 flex-shrink-0"
-                    />
-                    <span>{reason}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="text-alpha-muted text-sm">Analysis unavailable</div>
-          )}
+          <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex gap-3">
+            <AlertTriangle className="text-amber-600 shrink-0" size={20} />
+            <p className="text-[11px] text-amber-800 leading-tight">
+              AI analysis is based on historical data and current news
+              sentiment. This is not financial advice.
+            </p>
+          </div>
         </div>
       </div>
     </div>
   )
+}
+
+const formatCurrency = (val: string) => {
+  const cap = parseFloat(val)
+  if (isNaN(cap)) return val
+  if (cap >= 1.0e12) return `₹${(cap / 1.0e12).toFixed(2)}T`
+  if (cap >= 1.0e9) return `₹${(cap / 1.0e9).toFixed(2)}B`
+  if (cap >= 1.0e7) return `₹${(cap / 1.0e7).toFixed(2)}Cr`
+  return `₹${cap.toLocaleString()}`
 }
 
 export default StockDetails

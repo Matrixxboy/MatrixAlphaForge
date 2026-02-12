@@ -26,21 +26,23 @@ def fetch_google_news(query: str = "Finance"):
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
-            # Use 'xml' parser for RSS feeds
-            soup = BeautifulSoup(response.content, "xml")
-            items = soup.find_all("item")
+            # Fallback to html.parser if lxml is missing, handling lowercase tags
+            soup = BeautifulSoup(response.content, "html.parser")
+            items = soup.find_all(["item", "ITEM"])
             news_list = []
             
             for item in items[:10]:
                 try:
-                    title = item.title.text if item.title else "No Title"
-                    link = item.link.text if item.link else "#"
-                    pubDate = item.pubDate.text if item.pubDate else ""
+                    # distinct check for mixed case tags caused by html.parser lowercasing
+                    title = item.find("title").text if item.find("title") else "No Title"
+                    link = item.find("link").text if item.find("link") else "#"
                     
-                    # Source might be a tag or text within source tag
-                    source = "Unknown"
-                    if item.source:
-                        source = item.source.text
+                    pubDate = item.find("pubdate") or item.find("pubDate")
+                    pubDate = pubDate.text if pubDate else ""
+                    
+                    # Source extraction
+                    source_tag = item.find("source")
+                    source = source_tag.text if source_tag else "Unknown"
                     
                     news_list.append({
                         "title": title,

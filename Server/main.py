@@ -52,6 +52,9 @@ async def log_requests(request: Request, call_next):
 app.include_router(stock_router, prefix="/api/stock", tags=["Stock"])
 app.include_router(news_router, prefix="/api/news", tags=["News"])
 
+from Controller.ChatController import router as chat_router
+app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
+
 
 @app.get("/")
 async def root():
