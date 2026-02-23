@@ -48,6 +48,7 @@ const StatCard = ({
 
 import { api } from "../services/api"
 import CandlestickChart from "../components/CandlestickChart"
+import { usePriceStream } from "../hooks/usePriceStream"
 
 interface MarketSentimentData {
   ticker: string
@@ -292,6 +293,7 @@ interface MarketData {
 const Dashboard = () => {
   const [marketData, setMarketData] = useState<MarketData[]>([])
   const [loading, setLoading] = useState(true)
+  const { priceUpdates, isConnected } = usePriceStream()
 
   useEffect(() => {
     const fetchMarketData = async () => {
@@ -308,13 +310,57 @@ const Dashboard = () => {
     fetchMarketData()
   }, [])
 
+  // Sync marketData with live price updates
+  useEffect(() => {
+    if (priceUpdates.length > 0 && marketData.length > 0) {
+      setMarketData((prev) =>
+        prev.map((item) => {
+          const update = priceUpdates.find(
+            (u) =>
+              u.ticker ===
+              (item.title === "Nifty 50"
+                ? "^NSEI"
+                : item.title === "Sensex"
+                  ? "^BSESN"
+                  : item.title === "Nifty Bank"
+                    ? "^NSEBANK"
+                    : item.title === "India VIX"
+                      ? "^INDIAVIX"
+                      : ""),
+          )
+          if (update) {
+            return {
+              ...item,
+              value: update.price,
+              change: update.change,
+              positive: update.positive,
+            }
+          }
+          return item
+        }),
+      )
+    }
+  }, [priceUpdates, marketData.length])
+
   return (
     <div className="space-y-8 relative">
-      <div>
-        <h2 className="text-2xl font-bold text-alpha-deep">Market Overview</h2>
-        <p className="text-alpha-muted">
-          Real-time artificial intelligence analysis of global markets.
-        </p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-alpha-deep">
+            Market Overview
+          </h2>
+          <p className="text-alpha-muted">
+            Real-time artificial intelligence analysis of global markets.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200">
+          <div
+            className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
+          />
+          <span className="text-xs font-medium text-slate-600 uppercase tracking-wider">
+            {isConnected ? "Live Feed Active" : "Connecting..."}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

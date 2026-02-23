@@ -21,6 +21,8 @@ app = FastAPI(
 @app.on_event("startup")
 def on_startup():
     init_db()
+    from Controller.PriceStreamController import start_background_stream
+    start_background_stream()
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,6 +56,10 @@ app.include_router(news_router, prefix="/api/news", tags=["News"])
 
 from Controller.ChatController import router as chat_router
 app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
+
+from Controller.PriceStreamController import router as ws_router, start_background_stream
+app.include_router(ws_router, prefix="/api", tags=["Real-time"])
+
 
 
 @app.get("/")

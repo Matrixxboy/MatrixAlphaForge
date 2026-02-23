@@ -7,11 +7,11 @@ import {
   Activity,
   Brain,
   AlertTriangle,
-  ExternalLink,
   Loader2,
 } from "lucide-react"
 import { api } from "../services/api"
 import CandlestickChart from "../components/CandlestickChart"
+import { usePriceStream } from "../hooks/usePriceStream"
 
 interface StockHistory {
   date: string
@@ -80,6 +80,26 @@ const StockDetails = () => {
     fetchData()
   }, [ticker])
 
+  const { priceUpdates, isConnected } = usePriceStream(ticker ? [ticker] : [])
+
+  // Sync current price with live updates
+  const hasAnalysis = !!analysis
+  useEffect(() => {
+    if (ticker && priceUpdates.length > 0 && hasAnalysis) {
+      const update = priceUpdates.find((u) => u.ticker === ticker)
+      if (update) {
+        setAnalysis((prev) =>
+          prev
+            ? {
+                ...prev,
+                current_price: update.price,
+              }
+            : null,
+        )
+      }
+    }
+  }, [priceUpdates, ticker, hasAnalysis])
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-alpha-muted animate-pulse">
@@ -107,29 +127,39 @@ const StockDetails = () => {
             <Activity size={16} /> Technical & Sentimental Analysis
           </p>
         </div>
-        {analysis && (
-          <div className="flex items-center gap-6">
-            <div className="text-right">
-              <div className="text-sm text-slate-400 uppercase font-bold tracking-wider">
-                Current Price
-              </div>
-              <div className="text-3xl font-black text-slate-900">
-                ₹{analysis.current_price.toLocaleString()}
-              </div>
-            </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-50 border border-slate-200">
             <div
-              className={`px-4 py-2 rounded-xl border flex items-center gap-2 ${getSignalColor(analysis.signal)}`}
-            >
-              {analysis.signal === "BUY" && (
-                <ArrowUp size={24} strokeWidth={3} />
-              )}
-              {analysis.signal === "SELL" && (
-                <ArrowDown size={24} strokeWidth={3} />
-              )}
-              <span className="font-black text-xl">{analysis.signal}</span>
-            </div>
+              className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
+            />
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+              {isConnected ? "Live Feed" : "Offline"}
+            </span>
           </div>
-        )}
+          {analysis && (
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <div className="text-sm text-slate-400 uppercase font-bold tracking-wider">
+                  Current Price
+                </div>
+                <div className="text-3xl font-black text-slate-900">
+                  ₹{analysis.current_price.toLocaleString()}
+                </div>
+              </div>
+              <div
+                className={`px-4 py-2 rounded-xl border flex items-center gap-2 ${getSignalColor(analysis.signal)}`}
+              >
+                {analysis.signal === "BUY" && (
+                  <ArrowUp size={24} strokeWidth={3} />
+                )}
+                {analysis.signal === "SELL" && (
+                  <ArrowDown size={24} strokeWidth={3} />
+                )}
+                <span className="font-black text-xl">{analysis.signal}</span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Fundamentals Grid */}
